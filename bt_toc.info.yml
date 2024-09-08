@@ -1,0 +1,7 @@
+name: 'Bootstrap Toolbox Table of Content'
+type: module
+description: 'Provide a Table of Content'
+package: Custom
+core_version_requirement: ^10 || ^11
+dependencies:
+  - bootstrap_toolbox:bootstrap_toolbox

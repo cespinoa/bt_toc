@@ -1,0 +1,131 @@
+<?php
+
+/**
+ * @file
+ * Primary module hooks for Bootstrap Toolbox Table of Content module.
+ */
+
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Entity\Display\EntityViewDisplayInterface;
+
+ 
+function bt_toc_form_alter(&$form, \Drupal\Core\Form\FormStateInterface $form_state, $form_id){
+  if($form_id === 'node_type_edit_form' || $form_id === 'node_type_add_form'){
+    /** @var \Drupal\node\Entity\NodeType $nodeType */
+    $nodeType = $form_state->getFormObject()->getEntity();
+    $addToc = $nodeType->getThirdPartySetting('bootstrap_toolbox', 'add_toc', FALSE);
+    
+    
+    $form['bootstrap_toolbox']['add_toc'] = [
+      '#type' => 'checkbox',
+      '#title' => t('Add table of content'),
+      '#default_value' => $addToc,
+    ];
+    
+
+    $form['#entity_builders'][] = 'bt_toc_form_node_type_edit_form_builder';
+
+  }
+}
+
+/**
+ * Entity builder for the node type form with ThirdPartySetting options.
+ */
+function bt_toc_form_node_type_edit_form_builder($entityType, \Drupal\node\Entity\NodeType $type, &$form, FormStateInterface $form_state) {
+  $type->setThirdPartySetting('bootstrap_toolbox', 'add_toc', $form_state->getValue('add_toc'));
+}
+
+
+/**
+ * Implements hook_entity_view().
+ */
+function bt_toc_entity_view(array &$build, \Drupal\Core\Entity\EntityInterface $entity, \Drupal\Core\Entity\Display\EntityViewDisplayInterface $display, $view_mode) {
+  // Verifica si la entidad es un nodo y si tiene un campo 'body'.
+  if ($entity->getEntityTypeId() === 'node' && $entity->hasField('body')) {
+    $node_type = $entity->bundle();
+    $nodeType = \Drupal::entityTypeManager()->getStorage('node_type')->load($node_type);
+    $addToc = $nodeType->getThirdPartySetting('bootstrap_toolbox', 'add_toc', FALSE);
+    if($addToc){
+      $body_field = $build['body'][0]['#text'];
+      $altered_body = bt_toc_add_ids_to_headings($body_field);
+      $build['body'][0]['#text'] = $altered_body;
+    }
+  }
+}
+
+/**
+ * Función auxiliar que añade IDs secuenciales a los encabezados h1, h2, h3, y h4.
+ *
+ * @param string $body_field
+ *   El contenido del campo body.
+ *
+ * @return string
+ *   El contenido alterado con los IDs añadidos.
+ */
+function bt_toc_add_ids_to_headings($body_field) {
+
+  $dom = new \DOMDocument();
+  libxml_use_internal_errors(true);
+  @$dom->loadHTML('<?xml encoding="utf-8" ?>' . $body_field);
+  libxml_clear_errors();
+
+  $xpath = new \DOMXPath($dom);
+  $elements = $xpath->query('//h1 | //h2 | //h3 | //h4');
+
+  $counter = 1;
+  foreach ($elements as $element) {
+      $element->setAttribute('id', 'list-item-' . $counter);
+      $counter++;
+  }
+
+  $html_altered = $dom->saveHTML();
+
+  $html_altered = preg_replace('/^<!DOCTYPE.+?>/', '', $html_altered);
+  $html_altered = preg_replace('/<\?xml.+?\?>/', '', $html_altered);
+  $html_altered = preg_replace('/<\/?html>/', '', $html_altered);
+  $html_altered = preg_replace('/<\/?body>/', '', $html_altered);
+  $html_altered = trim($html_altered);
+  $html_altered = '<div id="body-area" data-bs-spy="scroll" data-bs-target="#list-toc" data-bs-offset="0" class="scrollspy-toc" tabindex="0">' . $html_altered . '</div>';
+
+  
+  return $html_altered;
+}
+
+
+/**
+ * Implements hook_form_FORM_ID_alter() for node edit forms.
+ *
+ * Move Bootstrap Toolbox fields in a details container in advanced settings
+ * 
+ */
+function bt_toc_form_node_form_alter(&$form, \Drupal\Core\Form\FormStateInterface $form_state, $form_id) {
+  
+  if (isset($form['table_of_content'])) {
+  
+    // Mueve los campos existentes al nuevo grupo de detalles.
+    if (isset($form['table_of_content'])) {
+      $form['bootstrap_toolbox']['table_of_content'] = $form['table_of_content'];
+      unset($form['table_of_content']);
+    }
+
+    
+    
+    
+    $node = $form_state->getFormObject()->getEntity();
+    if ($node instanceof \Drupal\node\NodeInterface) {
+      $nodeType = \Drupal\node\Entity\NodeType::load($node->bundle());
+      $thirdPartySettings = $nodeType->getThirdPartySettings('bootstrap_toolbox');
+      if($thirdPartySettings){
+        $form['bootstrap_toolbox']['table_of_content']['#states'] = [
+          'visible' => [
+            ':input[name="override_node_settings[value]"]' => ['checked' => TRUE],
+          ],
+        ];
+      }else{
+        $form['bootstrap_toolbox']['override_node_settings']['#access'] = FALSE;
+      }
+    }
+    
+  }
+}
