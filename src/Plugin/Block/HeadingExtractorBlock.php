@@ -65,10 +65,10 @@ class HeadingExtractorBlock extends BlockBase  implements ContainerFactoryPlugin
     $node = \Drupal::routeMatch()->getParameter('node');
     if ($node instanceof Node) {
       
-      $node_type = $node->bundle();
-      $nodeType = $this->entityTypeManager->getStorage('node_type')->load($node_type);
+      $nodeType = $node->bundle();
+      $nodeType = $this->entityTypeManager->getStorage('node_type')->load($nodeType);
       $addToc = $nodeType->getThirdPartySetting('bootstrap_toolbox', 'add_toc', FALSE);
-      if($node->get('override_node_settings')->value){
+      if($node->hasField('override_node_settings') && $node->get('override_node_settings')->value){
         $addToc = $node->get('table_of_content')->value;
       }
       if($addToc == TRUE){

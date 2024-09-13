@@ -43,13 +43,13 @@ function bt_toc_form_node_type_edit_form_builder($entityType, \Drupal\node\Entit
 function bt_toc_entity_view(array &$build, \Drupal\Core\Entity\EntityInterface $entity, \Drupal\Core\Entity\Display\EntityViewDisplayInterface $display, $view_mode) {
   // Verifica si la entidad es un nodo y si tiene un campo 'body'.
   if ($entity->getEntityTypeId() === 'node' && $entity->hasField('body')) {
-    $node_type = $entity->bundle();
-    $nodeType = \Drupal::entityTypeManager()->getStorage('node_type')->load($node_type);
+    $nodeType = $entity->bundle();
+    $nodeType = \Drupal::entityTypeManager()->getStorage('node_type')->load($nodeType);
     $addToc = $nodeType->getThirdPartySetting('bootstrap_toolbox', 'add_toc', FALSE);
-    if($addToc){
-      $body_field = $build['body'][0]['#text'];
-      $altered_body = bt_toc_add_ids_to_headings($body_field);
-      $build['body'][0]['#text'] = $altered_body;
+    if($addToc && array_key_exists(0,$build['body']) ){
+      $bodyField = $build['body'][0]['#text'];
+      $alteredBody = bt_toc_add_ids_to_headings($bodyField);
+      $build['body'][0]['#text'] = $alteredBody;
     }
   }
 }
@@ -57,17 +57,17 @@ function bt_toc_entity_view(array &$build, \Drupal\Core\Entity\EntityInterface $
 /**
  * Función auxiliar que añade IDs secuenciales a los encabezados h1, h2, h3, y h4.
  *
- * @param string $body_field
+ * @param string $bodyField
  *   El contenido del campo body.
  *
  * @return string
  *   El contenido alterado con los IDs añadidos.
  */
-function bt_toc_add_ids_to_headings($body_field) {
+function bt_toc_add_ids_to_headings($bodyField) {
 
   $dom = new \DOMDocument();
   libxml_use_internal_errors(true);
-  @$dom->loadHTML('<?xml encoding="utf-8" ?>' . $body_field);
+  @$dom->loadHTML('<?xml encoding="utf-8" ?>' . $bodyField);
   libxml_clear_errors();
 
   $xpath = new \DOMXPath($dom);
@@ -79,17 +79,17 @@ function bt_toc_add_ids_to_headings($body_field) {
       $counter++;
   }
 
-  $html_altered = $dom->saveHTML();
+  $alteredHtml = $dom->saveHTML();
 
-  $html_altered = preg_replace('/^<!DOCTYPE.+?>/', '', $html_altered);
-  $html_altered = preg_replace('/<\?xml.+?\?>/', '', $html_altered);
-  $html_altered = preg_replace('/<\/?html>/', '', $html_altered);
-  $html_altered = preg_replace('/<\/?body>/', '', $html_altered);
-  $html_altered = trim($html_altered);
-  $html_altered = '<div id="body-area" data-bs-spy="scroll" data-bs-target="#list-toc" data-bs-offset="0" class="scrollspy-toc" tabindex="0">' . $html_altered . '</div>';
+  $alteredHtml = preg_replace('/^<!DOCTYPE.+?>/', '', $alteredHtml);
+  $alteredHtml = preg_replace('/<\?xml.+?\?>/', '', $alteredHtml);
+  $alteredHtml = preg_replace('/<\/?html>/', '', $alteredHtml);
+  $alteredHtml = preg_replace('/<\/?body>/', '', $alteredHtml);
+  $alteredHtml = trim($alteredHtml);
+  $alteredHtml = '<div id="body-area" data-bs-spy="scroll" data-bs-target="#list-toc" data-bs-offset="0" class="scrollspy-toc" tabindex="0">' . $alteredHtml . '</div>';
 
   
-  return $html_altered;
+  return $alteredHtml;
 }
 
 
