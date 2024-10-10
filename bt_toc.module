@@ -8,12 +8,18 @@
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Entity\EntityInterface;
 use Drupal\Core\Entity\Display\EntityViewDisplayInterface;
+use Drupal\Core\Render\Markup;
+use Drupal\bootstrap_toolbox\UtilityServiceInterface;
+use Drupal\Core\Entity\ContentEntityInterface;
+
 
  
 function bt_toc_form_alter(&$form, \Drupal\Core\Form\FormStateInterface $form_state, $form_id){
   if($form_id === 'node_type_edit_form' || $form_id === 'node_type_add_form'){
+    /** @var \Drupal\Core\Entity\EntityFormInterface $blockObject */
+    $blockObject = $form_state->getFormObject();
     /** @var \Drupal\node\Entity\NodeType $nodeType */
-    $nodeType = $form_state->getFormObject()->getEntity();
+    $nodeType = $$blockObject->getEntity();
     $addToc = $nodeType->getThirdPartySetting('bootstrap_toolbox', 'add_toc', FALSE);
     
     
@@ -41,15 +47,16 @@ function bt_toc_form_node_type_edit_form_builder($entityType, \Drupal\node\Entit
  * Implements hook_entity_view().
  */
 function bt_toc_entity_view(array &$build, \Drupal\Core\Entity\EntityInterface $entity, \Drupal\Core\Entity\Display\EntityViewDisplayInterface $display, $view_mode) {
-  // Verifica si la entidad es un nodo y si tiene un campo 'body'.
-  if ($entity->getEntityTypeId() === 'node' && $entity->hasField('body')) {
+  if ($entity instanceof ContentEntityInterface &&  $entity->getEntityTypeId() === 'node' && $entity->hasField('body')) {
     $nodeType = $entity->bundle();
     $nodeType = \Drupal::entityTypeManager()->getStorage('node_type')->load($nodeType);
-    $addToc = $nodeType->getThirdPartySetting('bootstrap_toolbox', 'add_toc', FALSE);
-    if($addToc && array_key_exists(0,$build['body']) ){
-      $bodyField = $build['body'][0]['#text'];
-      $alteredBody = bt_toc_add_ids_to_headings($bodyField);
-      $build['body'][0]['#text'] = $alteredBody;
+    if($nodeType){
+      $addToc = $nodeType->getThirdPartySetting('bootstrap_toolbox', 'add_toc', FALSE);
+      if($addToc && array_key_exists(0,$build['body']) ){
+        $bodyField = $build['body'][0]['#text'];
+        $alteredBody = bt_toc_add_ids_to_headings($bodyField);
+        $build['body'][0]['#text'] = $alteredBody;
+      }      
     }
   }
 }
@@ -64,7 +71,25 @@ function bt_toc_entity_view(array &$build, \Drupal\Core\Entity\EntityInterface $
  *   El contenido alterado con los IDs añadidos.
  */
 function bt_toc_add_ids_to_headings($bodyField) {
-
+  $alteredHtml = $bodyField;
+  $bootstrapVersion = 5;
+  $utilityService = \Drupal::service('bootstrap_toolbox.utility_service');
+  $theme = $utilityService->getBehaviorSelectors();
+  if ($theme) {
+    $theme = (string) $theme;
+    $selectors = $utilityService->getThemeSelectors($theme);
+    if($selectors){
+      $bootstrapVersion = $selectors['bootstrap_version'];
+    }
+  }
+  
+  if ($bootstrapVersion == 3) {
+    $customData = '';
+  }
+  else {
+    $customData = 'data-bs-spy="scroll" data-target="#list-toc" data-bs-target="#list-toc" data-bs-offset="0" tabindex="0"';
+  }
+  
   $dom = new \DOMDocument();
   libxml_use_internal_errors(true);
   @$dom->loadHTML('<?xml encoding="utf-8" ?>' . $bodyField);
@@ -73,22 +98,34 @@ function bt_toc_add_ids_to_headings($bodyField) {
   $xpath = new \DOMXPath($dom);
   $elements = $xpath->query('//h1 | //h2 | //h3 | //h4');
 
-  $counter = 1;
-  foreach ($elements as $element) {
-      $element->setAttribute('id', 'list-item-' . $counter);
-      $counter++;
+  if ($elements) {
+    $counter = 1;
+    foreach ($elements as $element) {
+      if ($element instanceof \DOMElement) { // Verificamos si es un DOMElement
+        $element->setAttribute('id', 'list-item-' . $counter);
+        $counter++;
+      }
+    }
+
+    $alteredHtml = $dom->saveHTML();
+    if ($alteredHtml === false) {
+      $alteredHtml = ''; // Aseguramos que es una cadena vacía en caso de error.
+    }
+
+    $alteredHtml = preg_replace('/^<!DOCTYPE.+?>/', '', $alteredHtml);
+    $alteredHtml = preg_replace('/<\?xml.+?\?>/', '', $alteredHtml ?? '');
+    $alteredHtml = preg_replace('/<\/?html>/', '', $alteredHtml ?? '');
+    $alteredHtml = preg_replace('/<\/?body>/', '', $alteredHtml ?? '');
+
+    if (is_null($alteredHtml)) {
+      $alteredHtml = ''; // Asignamos una cadena vacía si es null
+    }
+
+    $alteredHtml = trim($alteredHtml);
+    $alteredHtml = '<div id="body-area"' . $customData . ' class="scrollspy-toc">' . $alteredHtml . '</div>';
   }
 
-  $alteredHtml = $dom->saveHTML();
 
-  $alteredHtml = preg_replace('/^<!DOCTYPE.+?>/', '', $alteredHtml);
-  $alteredHtml = preg_replace('/<\?xml.+?\?>/', '', $alteredHtml);
-  $alteredHtml = preg_replace('/<\/?html>/', '', $alteredHtml);
-  $alteredHtml = preg_replace('/<\/?body>/', '', $alteredHtml);
-  $alteredHtml = trim($alteredHtml);
-  $alteredHtml = '<div id="body-area" data-bs-spy="scroll" data-bs-target="#list-toc" data-bs-offset="0" class="scrollspy-toc" tabindex="0">' . $alteredHtml . '</div>';
-
-  
   return $alteredHtml;
 }
 
@@ -97,35 +134,78 @@ function bt_toc_add_ids_to_headings($bodyField) {
  * Implements hook_form_FORM_ID_alter() for node edit forms.
  *
  * Move Bootstrap Toolbox fields in a details container in advanced settings
- * 
  */
 function bt_toc_form_node_form_alter(&$form, \Drupal\Core\Form\FormStateInterface $form_state, $form_id) {
-  
   if (isset($form['table_of_content'])) {
-  
-    // Mueve los campos existentes al nuevo grupo de detalles.
     if (isset($form['table_of_content'])) {
       $form['bootstrap_toolbox']['table_of_content'] = $form['table_of_content'];
       unset($form['table_of_content']);
     }
-
-    
-    
-    
-    $node = $form_state->getFormObject()->getEntity();
+    $node = $form['#node'] ?? NULL;
     if ($node instanceof \Drupal\node\NodeInterface) {
       $nodeType = \Drupal\node\Entity\NodeType::load($node->bundle());
-      $thirdPartySettings = $nodeType->getThirdPartySettings('bootstrap_toolbox');
-      if($thirdPartySettings){
+      if ($nodeType && $thirdPartySettings = $nodeType->getThirdPartySettings('bootstrap_toolbox')) {
         $form['bootstrap_toolbox']['table_of_content']['#states'] = [
           'visible' => [
             ':input[name="override_node_settings[value]"]' => ['checked' => TRUE],
           ],
         ];
-      }else{
+      } else {
         $form['bootstrap_toolbox']['override_node_settings']['#access'] = FALSE;
       }
     }
-    
   }
 }
+
+
+/**
+ * Implements hook_preprocess_HOOK() for block .
+ */
+function bt_toc_preprocess_block(&$variables) {
+  
+  if($variables['plugin_id'] == 'bt_toc_block' && $variables['configuration']['add_affix_control'] ){
+    $content = $variables['content']['#markup']->__toString();
+    $content .= '<div class="toggle-sticky-wrapper mt-2 mb-4 text-end">
+      <button id="toggle-sticky" class="btn toc-button unpin-button" data-bs-toggle="tooltip" data-bs-placement="top" title="Pin/Unpin TOC"></button>
+      </div>';
+    $variables['content']['#markup'] = Markup::create($content);
+    $variables['#attached']['library'][] = 'bt_toc/toc_toggle_sticky';
+  }
+}
+
+
+/**
+ * Implements hook_preprocess_html
+ *
+ * ThirdPartySetting and custom fields preprocess altering page visualization.
+ */
+function bt_toc_preprocess_html(array &$variables) {
+  $utilityService = \Drupal::service('bootstrap_toolbox.utility_service');
+  $theme = $utilityService->getBehaviorSelectors();
+  if ($theme) {
+    $themeSelectors = $utilityService->getThemeSelectors($theme);
+    if (is_array($themeSelectors) && isset($themeSelectors['bootstrap_version'])) {
+      $bootstrapVersion = $themeSelectors['bootstrap_version'];
+      if ($bootstrapVersion == 3 || $bootstrapVersion == 4) {
+        $block_manager = \Drupal::service('plugin.manager.block');
+        $block_plugin = $block_manager->createInstance('bt_toc_block', []);
+        if ($block_plugin instanceof \Drupal\Core\Block\BlockPluginInterface) {
+          $block_content = $block_plugin->build();
+          if (!empty($block_content)) {
+            if (isset($variables['attributes'])) {
+              if (is_array($variables['attributes'])) {
+                $variables['attributes']['data-spy'] = 'scroll';
+                $variables['attributes']['data-target'] = '#list-toc';
+              }
+              elseif (is_object($variables['attributes']) && method_exists($variables['attributes'], 'setAttribute')) {
+                $variables['attributes']->setAttribute('data-spy', 'scroll');
+                $variables['attributes']->setAttribute('data-target', '#list-toc');
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

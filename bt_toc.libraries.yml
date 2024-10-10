@@ -1,0 +1,11 @@
+toc_toggle_sticky:
+  css:
+    theme:
+      css/toggle-sticky-aside.css: {}
+  js:
+    js/toggle-sticky-aside.js: {}
+  dependencies:
+    - core/jquery
+    - core/drupal
+    - core/drupalSettings
+

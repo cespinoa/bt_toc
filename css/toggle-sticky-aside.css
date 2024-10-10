@@ -1,0 +1,19 @@
+.toc-button {
+  width: 28px!important;
+  height: 28px!important;
+  background-repeat: no-repeat!important;
+  background-color: transparent!important;
+  border: none;
+  background-size: contain;
+  
+}
+
+.pin-button {
+  background-image: url('images/pin.png')!important;
+  opacity: 1;
+}
+
+.unpin-button {
+  background-image: url('images/unpin.png')!important;
+  opacity: 0.5;
+}
